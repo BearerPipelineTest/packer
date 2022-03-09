@@ -6,22 +6,31 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
-// MetaBlock defines funcs that are common to all HCL2 executable blocks.
+// MetaBlock defines funcs that are common to all HCL2 blocks.
 type MetaBlock interface {
 	// References returns the *addrs.Reference of everything being referenced in
 	// this block.
 	References() ([]*addrs.Reference, hcl.Diagnostics)
 
-	// Evaluate and validate the expressions for this block and properly
-	// configure it.
+	// Evaluate runs HCL all expression and puts them into the underlying data
+	// model.
 	Evaluate(ctx *hcl.EvalContext) hcl.Diagnostics
 
-	// Value of the block. It is probably unknown or not fully known before Run
-	// is called.
+	// Value of the block. For non-Runner types it is known from the top,
+	// otherwise it is probably unknown or not fully known before Run is called.
 	Value() cty.Value
 
 	// Expected type of Value, when unknown: cty.DynamicPseudoType is returned.
 	Type() cty.Type
+}
+
+type Runner interface {
+	// Run will be available on blocks that can execute, like the data source
+	// block or a build block.
+	//
+	// The run should result in changing the respone of Value to something
+	// known.
+	Run() hcl.Diagnostics
 }
 
 var (

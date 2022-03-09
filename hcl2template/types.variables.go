@@ -78,17 +78,13 @@ func (v *Variable) References() ([]*addrs.Reference, hcl.Diagnostics) {
 	}
 	refs := []*addrs.Reference{}
 	var diags hcl.Diagnostics
+	// take the reference of the 'being-used' set.
 	for _, v := range v.Values[len(v.Values)-1].Expr.Variables() {
 		ref, moreDiags := addrs.ParseRef(v)
 		diags = append(diags, moreDiags...)
 		refs = append(refs, ref)
 	}
 	return refs, diags
-}
-
-func (v *Variable) Run(ectx *hcl.EvalContext) hcl.Diagnostics {
-
-	return nil
 }
 
 func (v *Variable) GoString() string {
@@ -358,6 +354,9 @@ func (variables *Variables) decodeVariableBlock(block *hcl.Block, ectx *hcl.Eval
 		Range:        block.DefRange,
 		ExpectedType: cty.DynamicPseudoType,
 	}
+	defer func() {
+		v.EvaluatedValue = cty.UnknownVal(v.Type())
+	}()
 
 	if attr, exists := content.Attributes["description"]; exists {
 		valDiags := gohcl.DecodeExpression(attr.Expr, nil, &v.Description)
@@ -380,39 +379,10 @@ func (variables *Variables) decodeVariableBlock(block *hcl.Block, ectx *hcl.Eval
 	}
 
 	if def, ok := content.Attributes["default"]; ok {
-		defaultValue, moreDiags := def.Expr.Value(ectx)
-		diags = append(diags, moreDiags...)
-		if moreDiags.HasErrors() {
-			return diags
-		}
-
-		if v.ExpectedType != cty.NilType {
-			var err error
-			defaultValue, err = convert.Convert(defaultValue, v.ExpectedType)
-			if err != nil {
-				diags = append(diags, &hcl.Diagnostic{
-					Severity: hcl.DiagError,
-					Summary:  "Invalid default value for variable",
-					Detail:   fmt.Sprintf("This default value is not compatible with the variable's type constraint: %s.", err),
-					Subject:  def.Expr.Range().Ptr(),
-				})
-				defaultValue = cty.DynamicVal
-			}
-		}
-
 		v.Values = append(v.Values, VariableAssignment{
-			From:  "default",
-			Value: defaultValue,
-			Expr:  def.Expr,
+			From: "default",
+			Expr: def.Expr,
 		})
-
-		// It's possible no type attribute was assigned so lets make sure we
-		// have a valid type otherwise there could be issues parsing the value.
-		if v.ExpectedType == cty.DynamicPseudoType &&
-			!defaultValue.Type().Equals(cty.EmptyObject) &&
-			!defaultValue.Type().Equals(cty.EmptyTuple) {
-			v.ExpectedType = defaultValue.Type()
-		}
 	}
 
 	for _, block := range content.Blocks {
